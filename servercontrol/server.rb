@@ -21,7 +21,7 @@ Aws.config.update({
 ec2 = Aws::EC2::Resource.new(region: 'us-west-2')
 
 # ID of the Puppet Agent instance
-i = ec2.instance('i-00083b91aebee08f3')
+i = ec2.instance(ARGV[1])
 
 case ARGV[0]
 
