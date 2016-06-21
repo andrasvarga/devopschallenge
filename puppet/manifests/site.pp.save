@@ -1,0 +1,57 @@
+node default {}
+
+node 'doc-agent.localdomain' {
+
+
+	# LAMP-stack Installation from custom module
+
+	include lamp
+
+
+	# GIT installation
+
+	include git
+	git::config { 'color.ui':
+		value => 'true',
+	}
+	git::config { 'user.name':
+		value => 'andrasvarga',
+	}
+	git::config { 'user.email':
+		value => 'andras.varga.90@gmail.com',
+	}
+
+
+	# Ruby installation with AWS-SDK and Sinatra
+
+	package { 'ruby-full':
+		ensure => installed,
+	}
+	package { 'aws-sdk':
+		ensure	=> installed,
+		provider => gem,
+		require => Package['ruby-full'],
+	}
+	package { 'sinatra':
+		ensure => installed,
+		provider => gem,
+		require => Package['ruby-full'],
+	}
+
+	# DRUSH
+	
+	include drush::git::drush
+
+	# Composer (recommended for drupal 8)
+
+	include composer
+
+	# Drupal
+
+	composer::project { 'drupal/drupal':
+		project_name => 'andrasvarga/doc-drupal',
+		target_dir => '/var/www/html',
+		require => 'composer',
+	}
+
+}
