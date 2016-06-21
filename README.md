@@ -204,9 +204,9 @@ Instance id can be the ID of any EC2 instance within the security group (doc) ex
 Example Instance
 ----------------
 
-You can see a Drupal installation working on http://ec2-52-40-121-103.us-west-2.compute.amazonaws.com/
+You can see a Drupal installation working at http://ec2-52-40-121-103.us-west-2.compute.amazonaws.com/
 
 Workflow
 --------
 
-See my workflow on this project at ...
+See my workflow on this project at https://drive.google.com/file/d/0B6ZXHm3p6tCrMVNWSTdQNlc4ckU/view?usp=sharing

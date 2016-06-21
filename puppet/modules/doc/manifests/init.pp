@@ -1,6 +1,7 @@
+# DevOps Challenge alias DOC class with the site name parameter
 class doc ( $sitename = undef, ) {
 
-        # GIT installation
+        # GIT installation and setting for Andras
 	class gitinstall {
 	        class { 'git': } ->
 	        git::config { 'color.ui':
@@ -29,8 +30,9 @@ class doc ( $sitename = undef, ) {
         # Drupal site installation, configuring Apache and MySQL
         class drupalinstall {
                 require lamp
-
+		
 		exec { 'service apache2 stop':
+		    # stop apache to avoid conflicts
                     command => '/usr/bin/service apache2 stop',
                 } ->
                 drupal::site { $doc::sitename:
@@ -51,6 +53,7 @@ class doc ( $sitename = undef, ) {
                             docroot => "/var/www/${doc::sitename}",
                 } ->
                 exec { 'service apache2 start':
+		    # start apache
                     command => '/usr/bin/service apache2 start',
                 } ->
                 mysql::db { 'doc':
@@ -61,7 +64,8 @@ class doc ( $sitename = undef, ) {
                 }
          }
 
-	# LAMP-stack Installation from other custom module
+	# LAMP-stack Installation from other custom modules and declare the defined classes
+	# runs only if the site name is not undefined!
 	if $sitename != undef {
 		include lamp
 		include gitinstall

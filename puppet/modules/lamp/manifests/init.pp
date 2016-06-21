@@ -32,6 +32,7 @@ class lamp {
 		}
 	}
 
+	# declare the defined classes
 	include apacheinstall
 	include php5
 	include mysqlinstall
