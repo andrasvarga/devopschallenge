@@ -1,5 +1,11 @@
 #!/usr/bin/env ruby
 
+# Params:
+# ARGV[0]
+# ARGV[1]
+# ARGV[2]
+
+
 require 'aws-sdk'
 require 'net/http'
 require 'uri'
@@ -12,10 +18,7 @@ if ARGV[1] == 'i-0cafe358c771f98b2'
 	Kernel.exit
 end
 
-# AWS IAM security credentials
-Aws.config.update({
-	credentials: Aws::Credentials.new('AKIAIQ3FADWZRSFA4IHA', 'XyPswPyQU2bUr3Biw2ISh2x6LRngXhPBmfLiPMEY')
-})
+# AWS IAM security credentials are deleted in v0.2 due to security reasons.
 
 # EC2 object based on the region, where the Agent and the Master instances are
 ec2 = Aws::EC2::Resource.new(region: 'us-west-2')

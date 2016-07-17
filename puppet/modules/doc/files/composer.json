@@ -1,0 +1,36 @@
+{
+    "name": "drupal/drupal-project",
+    "description": "Project template for Drupal 7 projects with composer",
+    "type": "project",
+    "license": "GPL-2.0+",
+    "authors": [
+        {
+            "name": "Andras",
+            "role": "admin"
+        }
+    ],
+    "repositories": {
+        "drupal": {
+            "type": "composer",
+            "url":  "https://packagist.drupal-composer.org"
+        }
+    },
+
+    "require": {
+        "composer/installers": "^1.0.20",
+        "drupal/drupal": "7.*",
+	"drupal/libraries": "7.*",
+        "drush/drush": "7.*",
+	"aws/aws-sdk-php": "2.*",
+        "drupal/composer_manager": "7.*",
+        "drupal/console": "~0.8",
+        "drupal/s3fs": "7.*"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "extra": {
+        "installer-paths" : {
+            "core/sites/all/modules/{$name}" : ["drupal/libraries", "drupal/s3fs"]
+        }
+    }
+}

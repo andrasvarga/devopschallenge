@@ -4,6 +4,13 @@ class lamp {
 		command => '/usr/bin/apt-get update' # command this resource will run
 	}
 
+	class mailutils {
+		package { 'mailutils':
+			require => Exec['apt-update'],
+                        ensure => installed,
+		}
+	}
+
 	# install apache withoud default vhost for custom configuraton
 	class apacheinstall {
 		class { 'apache':
@@ -16,7 +23,7 @@ class lamp {
 	# install mysql-server package and ensure mysql service is running
 	class mysqlinstall {
 		package { 'mysql-server':
-			require => Exec['apt-update'], # require 'apt-update' before installing
+			require => Exec['apt-update'],
 			ensure => installed,
 		} ->
 		service { 'mysql':
@@ -36,4 +43,5 @@ class lamp {
 	include apacheinstall
 	include php5
 	include mysqlinstall
+	include mailutils
 }

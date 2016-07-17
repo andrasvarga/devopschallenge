@@ -1,7 +1,7 @@
 # DevOps Challenge alias DOC class with the site name parameter
 class doc (
-	$sitename = "drupal",
-	$username = "ubuntu",
+	$sitename = undef,
+	$user     = "ubuntu",
 ) {
         # GIT installation and setting for Andras
 	class gitinstall {
@@ -17,24 +17,26 @@ class doc (
 	        }
 	}
 
-        class drupalsetup {
+	class rubyinstall {
+	        package { 'ruby-full':
+        	        ensure => installed, class composerinit {
+	        } -> file { "/var/${doc::sitename}":
+	        package { 'sass': ensure => directory,
+	                ensure => installed, owner => $doc::user,
+	                provider => gem, } ->
+	                require => Package['ruby-full'], class { 'composer':
+	        }			download_method => 'wget',
+	} 
+			composer_home   => "/home/${doc::user}",
+		} ->
 		exec { 'service apache2 stop':
-                        command         => '/usr/bin/service apache2 stop',
+                	command		=> '/usr/bin/service apache2 stop',
                 } ->
-		file { "/var/${doc::sitename}":
-                        ensure		=> directory,
-			owner		=> $doc::username,
-		} ->
-		class { 'composer':
-			download_method => 'wget',
-			composer_home   => "/home/${doc::username}",
-			suhosin_enabled => false,
-		} ->
 		apache::vhost { $doc::sitename:
                 	ensure		=> present,
                 	port		=> '80',
                 	docroot		=> "/var/${doc::sitename}/core",
-			docroot_owner	=> $doc::username
+			docroot_owner	=> $doc::user
                 } ->
                 exec { 'service apache2 start':
                 	command		=> '/usr/bin/service apache2 start',
@@ -42,7 +44,7 @@ class doc (
                 file { "/var/${doc::sitename}/composer.json" :
 			ensure		=> present,
 			source		=> "puppet:///modules/doc/composer.json",
-			owner		=> $doc::username,
+			owner		=> $doc::user,
 		} ->
 		composer::exec { 'install':
 			cmd			=> 'install',
@@ -51,19 +53,8 @@ class doc (
 			custom_installers	=> true,
 			timeout			=> 400,
 			interaction		=> false,
-			user			=> $doc::username,
+			user			=> $doc::user,
                 } ->
-		file { "/var/${doc::sitename}/core/sites/default/settings.php" :
-                        ensure  => present,
-                	content => template('doc/settings.php.erb'),
-                } ->
-		file { "/var/${doc::sitename}/core/profiles/awsprofile" :
-			source  => "puppet:///modules/doc/awsprofile",
-			recurse	=> true,
-		} ->
-		drush::run { 'site-install':
-			arguments  => "--site-name=${doc::sitename} --root='/var/${doc::sitename}/core' --account-name=${::drupalusr} --account-pass=${::drupalpsw}",
-		} ->
 		exec { "chown /var/${doc::sitename}":
                         # Modify project directory permissions to be writable by the application
                         command         => "/bin/chown -R www-data /var/${doc::sitename}",
@@ -71,13 +62,16 @@ class doc (
 		exec { "chmod install.php":
 			command		=> "/bin/chmod -R 777 /var/${doc::sitename}/core/install.php",
 		}
+		file { "/home/${doc::user}/output.txt" :
+			ensure  => present,
+			content => "DBHost: ${::awsdbhost}\nDBName: ${::awsdbname}\nDBUser: ${::awsdbuser}\nDBPass: ${::awsdbpass}\nS3Host: ${::awss3host}\nS3Name: ${::awss3name}",
+		}
         }
 
 	# LAMP-stack Installation from other custom modules and declare the defined classes runs only if the site name is not undefined!
 	if $sitename != undef {
-		class { 'lamp': } ->
-		class { 'gitinstall': } ->
-		class { 'drush': } ->
-		class { 'drupalsetup': }
+		include lamp
+		include gitinstall
+		include composerinit
 	}
 }
