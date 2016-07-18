@@ -20,7 +20,7 @@ class ServerControl < Sinatra::Base
 	end
 
 	def get_instance(id)
-		ec2 = Aws::EC2::Resource.new(region: 'eu-central-1')
+		ec2 = Aws::EC2::Resource.new(region: $aws_region)
 		return ec2.instance(id)
 	end
 
@@ -32,12 +32,6 @@ class ServerControl < Sinatra::Base
                 valid_params = Hash.new
 		
 		defaults.each do |key,param|
-
-			puts "checking:"
-			puts key
-			puts "input: "
-			puts raw_params[key]
-			puts ""
 
 			if param[:type] == 'novalidate'
 				next
@@ -112,7 +106,7 @@ class ServerControl < Sinatra::Base
 	                                                        return valid_params
 							end
 						end
-						valid_params[key] = "'#{raw_params[key].join("', '")}'"
+						valid_params[key] = raw_params[key].join(", ")
 					when "option"
 						unless param[:allowed].include? raw_params[key]
 							valid_params['ERROR'] = true
@@ -135,8 +129,11 @@ class ServerControl < Sinatra::Base
 	end
 
 	before do
-		request.body.rewind
-		@request_payload = JSON.parse request.body.read
+		r = request.body
+		unless r.read.to_s.length < 2
+			r.rewind
+			@request_payload = JSON.parse r.read
+		end
 	end
 
 	# Launching a stack
@@ -159,32 +156,61 @@ class ServerControl < Sinatra::Base
 
 		template = File.open(File.dirname(__FILE__)+'/files/template.json').read
 
-		creation = cloudformation.create_stack({
-			stack_name: params['stackName'],
-			template_body: template,
-			parameters: [
-			  { parameter_key: "VpcId", 		 parameter_value: params['VpcId'] },
-			  { parameter_key: "Subnets", 		 parameter_value: params['Subnets'] },
-			  { parameter_key: "AZs",		 parameter_value: params['AZs'] },
-			  { parameter_key: "KeyName",	 	 parameter_value: params['KeyName'] },
-			  { parameter_key: "SSHLocation",	 parameter_value: params['SSHLocation'] },
-			  { parameter_key: "InstanceType",	 parameter_value: params['InstanceType'] },
-			  { parameter_key: "InstanceCount",	 parameter_value: params['InstanceCount'] },
-			  { parameter_key: "DBName",		 parameter_value: params['DBName'] },
-			  { parameter_key: "DBUser",		 parameter_value: params['DBUser'] },
-			  { parameter_key: "DBPassword",         parameter_value: params['DBPassword'] },
-			  { parameter_key: "DBAllocatedStorage", parameter_value: params['DBAllocatedStorage'] },
-			  { parameter_key: "DBInstanceClass",    parameter_value: params['DBInstanceClass'] },
-			  { parameter_key: "MultiAZDatabase",	 parameter_value: params['MultiAZDatabase'] },
-			  { parameter_key: "DrupalUser",	 parameter_value: params['DrupalUser'] },
-			  { parameter_key: "DrupalPassword",	 parameter_value: params['DrupalPassword'] }
-			],
-			capabilities: ["CAPABILITY_IAM"],
-			on_failure: "ROLLBACK"
-		})
+		begin
+			creation = cloudformation.create_stack({
+				stack_name: params['stackName'],
+				template_body: template,
+				parameters: [
+				  { parameter_key: "VpcId", 		 parameter_value: params['VpcId'] },
+				  { parameter_key: "Subnets", 		 parameter_value: params['Subnets'] },
+				  { parameter_key: "AZs",		 parameter_value: params['AZs'] },
+				  { parameter_key: "KeyName",	 	 parameter_value: params['KeyName'] },
+				  { parameter_key: "SSHLocation",	 parameter_value: params['SSHLocation'] },
+				  { parameter_key: "InstanceType",	 parameter_value: params['InstanceType'] },
+				  { parameter_key: "InstanceCount",	 parameter_value: params['InstanceCount'] },
+				  { parameter_key: "DBName",		 parameter_value: params['DBName'] },
+				  { parameter_key: "DBUser",		 parameter_value: params['DBUser'] },
+				  { parameter_key: "DBPassword",         parameter_value: params['DBPassword'] },
+				  { parameter_key: "DBAllocatedStorage", parameter_value: params['DBAllocatedStorage'] },
+				  { parameter_key: "DBInstanceClass",    parameter_value: params['DBInstanceClass'] },
+				  { parameter_key: "MultiAZDatabase",	 parameter_value: params['MultiAZDatabase'] },
+				  { parameter_key: "DrupalUser",	 parameter_value: params['DrupalUser'] },
+				  { parameter_key: "DrupalPassword",	 parameter_value: params['DrupalPassword'] }
+				],
+				capabilities: ["CAPABILITY_IAM"],
+				on_failure: "ROLLBACK"
+			})
+		rescue Aws::CloudFormation::Errors::ServiceError => e
+			status 400
+			body e.message
+			return
+		end
 
+		status 200
+		return
+	end
 
-
+	delete '/stack/:name' do
+		if params[:name].nil?
+			status 400
+			body "No stack name given"
+			return
+		end
+		
+		begin
+			cloudformation = Aws::CloudFormation::Client.new(
+        	                region: $aws_region
+	                )
+			deletion = cloudformation.delete_stack({
+  				stack_name: params[:name]
+			})
+		rescue Aws::CloudFormation::Errors::ServiceError => e
+			status 400
+			body e.message
+			return
+		end
+		
+		status 200
 		return
 	end
 	
@@ -195,9 +221,13 @@ class ServerControl < Sinatra::Base
 		if i.exists?
 		    case i.state.code
 		        when 0  # pending
-	        	    return "Agent is pending, so it will be running in a bit"
+			    status 400
+	        	    body "Agent is pending, so it will be running in a bit"
+			    return
 		        when 16  # started
-		            return "Agent is already started"
+			    status 400
+		            body "Agent is already started"
+			    return
 	        	when 48  # terminated
 		            return "Agent is terminated, so you cannot start it"
 		    else
