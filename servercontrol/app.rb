@@ -141,13 +141,13 @@ class ServerControl < Sinatra::Base
 			return
 		end
 
-		cloudformation = Aws::CloudFormation::Client.new(
-			region: $aws_region
-		)
-
-		template = File.open(File.dirname(__FILE__)+'/files/template.json').read
-
 		begin
+			cloudformation = Aws::CloudFormation::Client.new(
+				region: $aws_region
+			)
+
+			template = File.open(File.dirname(__FILE__)+'/files/template.json').read
+
 			creation = cloudformation.create_stack({
 				stack_name: params['stackName'],
 				template_body: template,
@@ -173,7 +173,7 @@ class ServerControl < Sinatra::Base
 			})
 		rescue RuntimeError => e
 			error = { "error" => e.message }
-			status 400
+			status 500
 			body error.to_json
 			return
 		end
