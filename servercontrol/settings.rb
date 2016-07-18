@@ -85,7 +85,7 @@
 		},
                 'DBPassword'         => {
 			:type    => "string",
-			:default => 'randompassword',
+			:default => Array.new(8){[*"a".."z", *"0".."9"].sample}.join,
 			:min	 => 8,
 			:max	 => 41,
 			:pattern => "[a-zA-Z0-9]*"
@@ -115,7 +115,7 @@
 		},
         	'DrupalPassword'     => {
 			:type    => "string",
-			:default => "admin",
+			:default => Array.new(8){[*"a".."z", *"0".."9"].sample}.join,
 			:min	 => 8,
 			:max	 => 41,
 			:pattern => "[a-zA-Z0-9]*"

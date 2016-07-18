@@ -24,9 +24,8 @@ class ServerControl < Sinatra::Base
 		return ec2.instance(id)
 	end
 
+	# Parameter validation for new stack creation. Criterias and default values are configured in settings.rb.
 	def validate(raw_params)
-		
-		puts "validation starts"
 
 		defaults = Marshal.load( Marshal.dump($params_config) )
                 valid_params = Hash.new
@@ -47,7 +46,11 @@ class ServerControl < Sinatra::Base
 
 				# assign default value if nil
 				if raw_params[key].nil? || raw_params[key].empty?
-                                                valid_params[key] = param[:default].to_s
+					if param[:default].kind_of?(Array)
+	                                	valid_params[key] = param[:default].join(", ")
+					else
+						valid_params[key] = param[:default].to_s
+					end
                                 else
 					# validate based on type
 					case param[:type]
@@ -62,7 +65,6 @@ class ServerControl < Sinatra::Base
                                                         valid_params['ERROR_MESSAGE'] = "#{key} is too long! Maximum length is #{param[:max]}"
                                                         return valid_params
 						end
-
 						unless param[:pattern].nil?
 							pattern = Regexp.new(param[:pattern]).freeze
 							unless raw_params[key] =~ pattern
@@ -73,9 +75,7 @@ class ServerControl < Sinatra::Base
 						end
 						valid_params[key] = raw_params[key]
 					when "integer"
-
 						i = raw_params[key].to_i
-
 						unless i
 							valid_params['ERROR'] = true
                                                         valid_params['ERROR_MESSAGE'] = "#{key} : #{raw_params[key]} is not an integer!"
@@ -95,11 +95,6 @@ class ServerControl < Sinatra::Base
 						end
 					when "list"
 						raw_params[key].each do |item|
-
-							puts "item:"
-							puts item
-							puts ""
-							
 							unless param[:allowed].include? item
 								valid_params['ERROR'] = true
 								valid_params['ERROR_MESSAGE'] = "#{key} : #{j} is not an option! Allowed values are: #{param[:allowed]}"
@@ -123,8 +118,6 @@ class ServerControl < Sinatra::Base
 				end
 			end
 		end
-		puts "valid params before pass: "
-		puts valid_params
 		return valid_params
 	end
 
@@ -136,17 +129,15 @@ class ServerControl < Sinatra::Base
 		end
 	end
 
-	# Launching a stack
+	# Create stack
 	post '/stack' do
 		
 		params = validate(@request_payload)
 
-		puts "validated params:"
-		puts params
-
 		unless params['ERROR'].nil?
+			error = { "error" => params['ERROR_MESSAGE'] }
 			status 400
-			body params['ERROR_MESSAGE']
+			body error.to_json
 			return
 		end
 
@@ -180,16 +171,27 @@ class ServerControl < Sinatra::Base
 				capabilities: ["CAPABILITY_IAM"],
 				on_failure: "ROLLBACK"
 			})
-		rescue Aws::CloudFormation::Errors::ServiceError => e
+		rescue RuntimeError => e
+			error = { "error" => e.message }
 			status 400
-			body e.message
+			body error.to_json
 			return
 		end
 
+		results = {
+			"success" => {
+				"StackId"	 => creation.stack_id,
+				"DrupalUsername" => params['DrupalUser'],
+				"DrupalPassword" => params['DrupalPassword']
+			}
+		}
+
 		status 200
+		body results.to_json
 		return
 	end
 
+	# Detele stack
 	delete '/stack/:name' do
 		if params[:name].nil?
 			status 400
@@ -204,7 +206,7 @@ class ServerControl < Sinatra::Base
 			deletion = cloudformation.delete_stack({
   				stack_name: params[:name]
 			})
-		rescue Aws::CloudFormation::Errors::ServiceError => e
+		rescue RuntimeError => e
 			status 400
 			body e.message
 			return
