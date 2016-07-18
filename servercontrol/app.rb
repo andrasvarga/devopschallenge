@@ -25,12 +25,20 @@ class ServerControl < Sinatra::Base
 	end
 
 	def validate(raw_params)
+		
+		puts "validation starts"
 
 		defaults = Marshal.load( Marshal.dump($params_config) )
                 valid_params = Hash.new
-
 		
 		defaults.each do |key,param|
+
+			puts "checking:"
+			puts key
+			puts "input: "
+			puts raw_params[key]
+			puts ""
+
 			if param[:type] == 'novalidate'
 				next
 			else
@@ -39,7 +47,7 @@ class ServerControl < Sinatra::Base
 					if raw_params[key].nil? || raw_params[key].empty?
 			                        valid_params['ERROR'] = true
                         			valid_params['ERROR_MESSAGE'] = "#{key} is required!"
-			                        return
+			                        return valid_params
 			                end
 				end
 
@@ -54,13 +62,11 @@ class ServerControl < Sinatra::Base
 						if l < param[:min]
 							valid_params['ERROR'] = true
 	                                                valid_params['ERROR_MESSAGE'] = "#{key} is too short! Minimum length is #{param[:min]}"
-        	                                        return
-						end
-						
-						if l > param[:max]
+        	                                        return valid_params
+						elsif l > param[:max]
 							valid_params['ERROR'] = true
                                                         valid_params['ERROR_MESSAGE'] = "#{key} is too long! Maximum length is #{param[:max]}"
-                                                        return
+                                                        return valid_params
 						end
 
 						unless param[:pattern].nil?
@@ -68,15 +74,25 @@ class ServerControl < Sinatra::Base
 							unless raw_params[key] =~ pattern
 								valid_params['ERROR'] = true
 	                                                        valid_params['ERROR_MESSAGE'] = "#{key} does not match the pattern!"
-								return
+								return valid_params
 							end
 						end
+						valid_params[key] = raw_params[key]
 					when "integer"
-						if raw_params[key] < param[:min]
+
+						i = raw_params[key].to_i
+
+						unless i
+							valid_params['ERROR'] = true
+                                                        valid_params['ERROR_MESSAGE'] = "#{key} : #{raw_params[key]} is not an integer!"
+                                                        return valid_params
+						end
+
+						if i < param[:min]
                                                         valid_params['ERROR'] = true
                                                         valid_params['ERROR_MESSAGE'] = "#{key} is too small! Minimum is #{param[:min]}"
-                                                        return
-                                                elsif  raw_params[key] > param[:max]
+                                                        return valid_params
+                                                elsif  i > param[:max]
                                                         valid_params['ERROR'] = true
                                                         valid_params['ERROR_MESSAGE'] = "#{key} is too big! Maximum is #{param[:max]}"
                                                         return
@@ -84,23 +100,38 @@ class ServerControl < Sinatra::Base
 							valid_params[key] = raw_params[key]
 						end
 					when "list"
-						# multiple params
+						raw_params[key].each do |item|
+
+							puts "item:"
+							puts item
+							puts ""
+							
+							unless param[:allowed].include? item
+								valid_params['ERROR'] = true
+								valid_params['ERROR_MESSAGE'] = "#{key} : #{j} is not an option! Allowed values are: #{param[:allowed]}"
+	                                                        return valid_params
+							end
+						end
+						valid_params[key] = "'#{raw_params[key].join("', '")}'"
 					when "option"
 						unless param[:allowed].include? raw_params[key]
 							valid_params['ERROR'] = true
                                                         valid_params['ERROR_MESSAGE'] = "#{key} is not an option! Allowed values are: #{param[:allowed]}"
-                                                        return
+                                                        return valid_params
 						else
 							valid_params[key] = raw_params[key]
 						end
 					else
 						valid_params['ERROR'] = true
                                                 valid_params['ERROR_MESSAGE'] = "Unknown parameter type: #{param[:type]}"
-						return
+						return valid_params
 					end
 				end
 			end
 		end
+		puts "valid params before pass: "
+		puts valid_params
+		return valid_params
 	end
 
 	before do
@@ -113,9 +144,13 @@ class ServerControl < Sinatra::Base
 		
 		params = validate(@request_payload)
 
-		if params['ERROR']
+		puts "validated params:"
+		puts params
+
+		unless params['ERROR'].nil?
 			status 400
 			body params['ERROR_MESSAGE']
+			return
 		end
 
 		cloudformation = Aws::CloudFormation::Client.new(
