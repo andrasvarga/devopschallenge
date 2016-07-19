@@ -3,14 +3,6 @@
 	$aws_region = "eu-central-1"
 	
 	$params_config = {
-                'ERROR'              => {
-			:type    => "novalidate",
-			:default => false
-		},
-                'ERROR_MESSAGE'      => {
-			:type	 => "novalidate",
-			:default => nil
-		},
                 'stackName'          => {
 			:type	 => "string",
 			:default => "NewStack",

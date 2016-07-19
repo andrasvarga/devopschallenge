@@ -8,6 +8,9 @@ require 'sinatra'
 require 'json'
 require './settings'
 
+class ValidationError < StandardError
+end
+
 class ServerControl < Sinatra::Base
 
 	def self_check(id)
@@ -29,7 +32,7 @@ class ServerControl < Sinatra::Base
 
 		defaults = Marshal.load( Marshal.dump($params_config) )
                 valid_params = Hash.new
-		
+
 		defaults.each do |key,param|
 
 			if param[:type] == 'novalidate'
@@ -38,8 +41,7 @@ class ServerControl < Sinatra::Base
 				# check if required
 				if param[:required]
 					if raw_params[key].nil? || raw_params[key].empty?
-			                        valid_params['ERROR'] = true
-                        			valid_params['ERROR_MESSAGE'] = "#{key} is required!"
+                        			valid_params['ERROR'] = "#{key} is required!"
 			                        return valid_params
 			                end
 				end
@@ -57,19 +59,16 @@ class ServerControl < Sinatra::Base
 					when "string"
 						l = raw_params[key].length
 						if l < param[:min]
-							valid_params['ERROR'] = true
-	                                                valid_params['ERROR_MESSAGE'] = "#{key} is too short! Minimum length is #{param[:min]}"
+	                                                valid_params['ERROR'] = "#{key} : #{raw_params[key]} is too short! Minimum length is #{param[:min]}"
         	                                        return valid_params
 						elsif l > param[:max]
-							valid_params['ERROR'] = true
-                                                        valid_params['ERROR_MESSAGE'] = "#{key} is too long! Maximum length is #{param[:max]}"
+                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is too long! Maximum length is #{param[:max]}"
                                                         return valid_params
 						end
 						unless param[:pattern].nil?
 							pattern = Regexp.new(param[:pattern]).freeze
 							unless raw_params[key] =~ pattern
-								valid_params['ERROR'] = true
-	                                                        valid_params['ERROR_MESSAGE'] = "#{key} does not match the pattern!"
+	                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} does not match the pattern: #{param[:pattern]}"
 								return valid_params
 							end
 						end
@@ -77,42 +76,36 @@ class ServerControl < Sinatra::Base
 					when "integer"
 						i = raw_params[key].to_i
 						unless i
-							valid_params['ERROR'] = true
-                                                        valid_params['ERROR_MESSAGE'] = "#{key} : #{raw_params[key]} is not an integer!"
+                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is not integer!"
                                                         return valid_params
 						end
 
 						if i < param[:min]
-                                                        valid_params['ERROR'] = true
-                                                        valid_params['ERROR_MESSAGE'] = "#{key} is too small! Minimum is #{param[:min]}"
+                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is too small! Minimum is #{param[:min]}"
                                                         return valid_params
                                                 elsif  i > param[:max]
-                                                        valid_params['ERROR'] = true
-                                                        valid_params['ERROR_MESSAGE'] = "#{key} is too big! Maximum is #{param[:max]}"
-                                                        return
+                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is too big! Maximum is #{param[:max]}"
+                                                        return valid_params
                                                 else
 							valid_params[key] = raw_params[key]
 						end
 					when "list"
 						raw_params[key].each do |item|
 							unless param[:allowed].include? item
-								valid_params['ERROR'] = true
-								valid_params['ERROR_MESSAGE'] = "#{key} : #{j} is not an option! Allowed values are: #{param[:allowed]}"
+								valid_params['ERROR'] = "#{key} : #{j} is not an allowed! Allowed values are: #{param[:allowed]}"
 	                                                        return valid_params
 							end
 						end
 						valid_params[key] = raw_params[key].join(", ")
 					when "option"
 						unless param[:allowed].include? raw_params[key]
-							valid_params['ERROR'] = true
-                                                        valid_params['ERROR_MESSAGE'] = "#{key} is not an option! Allowed values are: #{param[:allowed]}"
+                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is not an option! Allowed values are: #{param[:allowed]}"
                                                         return valid_params
 						else
 							valid_params[key] = raw_params[key]
 						end
 					else
-						valid_params['ERROR'] = true
-                                                valid_params['ERROR_MESSAGE'] = "Unknown parameter type: #{param[:type]}"
+                                                valid_params['ERROR'] = "Unknown parameter type: #{param[:type]}"
 						return valid_params
 					end
 				end
@@ -135,20 +128,18 @@ class ServerControl < Sinatra::Base
 		params = validate(@request_payload)
 
 		unless params['ERROR'].nil?
-			error = { "error" => params['ERROR_MESSAGE'] }
+			error = { "error" => params['ERROR'] }
 			status 400
 			body error.to_json
 			return
 		end
 
 		begin
-			cloudformation = Aws::CloudFormation::Client.new(
-				region: $aws_region
-			)
+			client = Aws::CloudFormation::Client.new( region: $aws_region )
 
 			template = File.open(File.dirname(__FILE__)+'/files/template.json').read
 
-			creation = cloudformation.create_stack({
+			creation = client.create_stack({
 				stack_name: params['stackName'],
 				template_body: template,
 				parameters: [
@@ -171,6 +162,11 @@ class ServerControl < Sinatra::Base
 				capabilities: ["CAPABILITY_IAM"],
 				on_failure: "ROLLBACK"
 			})
+
+			stack_description = client.describe_stacks({ stack_name: creation.stack_id })
+
+			status_message = stack_description.stacks[0].stack_status
+
 		rescue RuntimeError => e
 			error = { "error" => e.message }
 			status 500
@@ -178,17 +174,24 @@ class ServerControl < Sinatra::Base
 			return
 		end
 
-		results = {
-			"success" => {
-				"StackId"	 => creation.stack_id,
-				"DrupalUsername" => params['DrupalUser'],
-				"DrupalPassword" => params['DrupalPassword']
+		if status_message == "CREATE_IN_PROGRESS"
+			results = {
+				"success" => {
+					"StackId"	 => creation.stack_id,
+					"Status"         => status_message,
+					"DrupalUsername" => params['DrupalUser'],
+					"DrupalPassword" => params['DrupalPassword']
+				}
 			}
-		}
-
-		status 200
-		body results.to_json
-		return
+			status 200
+			body results.to_json
+			return
+		else
+			error = { "error" => status_message }
+			status 500
+			body error.to_json
+			return
+		end
 	end
 
 	# Detele stack
@@ -200,43 +203,85 @@ class ServerControl < Sinatra::Base
 		end
 		
 		begin
-			cloudformation = Aws::CloudFormation::Client.new(
-        	                region: $aws_region
-	                )
-			deletion = cloudformation.delete_stack({
-  				stack_name: params[:name]
-			})
+			stack = params[:name]
+			client = Aws::CloudFormation::Client.new( region: $aws_region )
+			deletion = client.delete_stack({ stack_name: stack })
+			stack_description = client.describe_stacks({ stack_name: stack })
+                        status_message = stack_description.stacks[0].stack_status
 		rescue RuntimeError => e
-			status 400
-			body e.message
+			error = { "error" => e.message }
+			status 500
+			body error.to_json
 			return
 		end
 		
-		status 200
-		return
+		if status_message == "DELETE_IN_PROGRESS"
+			results = { "success" => status_message }
+			status 200
+			body results.to_json
+			return
+		else
+			error = { "error" => status_message }
+			status 500
+			body error.to_json
+			return
+		end
 	end
+
+	# Get Stack status
+	get '/stack/:name' do
+		if params[:name].nil?
+                        status 400
+                        body "No stack name given"
+                        return
+                end
+
+                begin
+                        stack = params[:name]
+                        client = Aws::CloudFormation::Client.new( region: $aws_region )
+                        stack_description = client.describe_stacks({ stack_name: stack })
+                rescue RuntimeError => e
+                        error = { "error" => e.message }
+                        status 500
+                        body error.to_json
+                        return
+                end
+                status 200
+                body stack_description.stack[0].to_json
+                return
+        end
 	
-	# Starting an EC2 instance
+	# Starting EC2 instance
 	patch '/instance/:id/start' do
 		self_check( params[:id] )
 		i = get_instance( params[:id] )
 		if i.exists?
 		    case i.state.code
 		        when 0  # pending
-			    status 400
-	        	    body "Agent is pending, so it will be running in a bit"
-			    return
+				msg = { "error" => "Agent is pending, so it will be running in a bit" }
+				status 400
 		        when 16  # started
-			    status 400
-		            body "Agent is already started"
-			    return
+				msg = { "error" => "Agent is already started" }
+				status 400
 	        	when 48  # terminated
-		            return "Agent is terminated, so you cannot start it"
-		    else
-	        	i.start
-			return "Agent is started"
+				msg = { "error" => "Agent is terminated, so you cannot start it" }
+	        		status 400	
+		        else
+	        		i.start
+				if i.state.code == 16
+					msg = { "success" => "Instance is started" }
+		        		status 200
+				else
+					msg = { "error" => "Instance state code: #{i.state.code}" }
+					status 500
+				end
 		    end
+		else
+			msg = { "error" => "Instance not found" }
+			status 404
 		end
+		body msg.to_json
+		return
 	end
 
 	# Stopping and EC2 instance
@@ -246,85 +291,69 @@ class ServerControl < Sinatra::Base
 		if i.exists?
 		    case i.state.code
 		        when 48  # terminated
-	        	    return "Agent is terminated, so you cannot stop it"
+	        		msg = { "error" => "Agent is terminated, so you cannot stop it" }
+				status 400
 		        when 64  # stopping
-		            return "Agent is stopping, so it will be stopped in a bit"
+		        	msg = { "error" => "Agent is stopping, so it will be stopped in a bit" }
+				status 400
 		        when 89  # stopped
-		            return "Agent is already stopped"
-		    else
-        	    i.stop
-	            return "Agent is stopped"
-		    end
-		else
-			return 404
-		end
-	end
-
-	# Rebooting the agent node
-	patch '/instance/:id/reboot' do
-	    self_check( params[:id] )
-	    i = get_instance( params[:id] )
-	    if i.exists?
-		    case i.state.code
-	        	when 48  # terminated
-		            return "Agent is terminated, so you cannot reboot it"
+		        	msg = { "error" =>  "Agent is already stopped" }
+		        	status 400
 		    	else
-			    i.reboot
-		            return "Agent is rebooting"
+        	    		i.stop
+        	    		if i.state.code == 64
+					msg = { "success" => "Agent is stopping" }
+					status 200
+				else
+					msg = { "error" => "Instance state code: #{i.state.code}" }
+					status 500
+				end
 		    end
-	    else
-		return 404
-	    end
+		else	
+			msg = { "error" => "Instance not found" }
+			status 404
+		end
+		body msg.to_json
+		return
 	end
-
-	# Terminate
-#	delete '/instance/:id' do
-#		self_check( params[:id] )
-#		i = get_instance( params[:id] )
-#		if i.exists?
-#		case i.state.code
-#			when 48  # terminated
-#				puts "#{id} is already terminated"
-#			else
-#				i.terminate
-#			end
-#		end
-#	end
 
 	# Testing the Drupal site availability on agent node
-	get '/test/:id' do
-		self_check( params[:id] )
-		i = get_instance( params[:id] )
-		uri_temp = "http://" + i.public_dns_name + "/?q=test"
+ 	get '/stack/:name/test' do
+		if params[:name].nil?
+                        status 400
+                        body "No stack name given"
+                        return
+                end
 
-		puts ""		
-		puts "Starting drupal test on:"
-		puts uri_temp
+                begin
+                        stack = params[:name]
+                        client = Aws::CloudFormation::Client.new( region: $aws_region )
+                        stack_description = client.describe_stacks({ stack_name: stack })
+			uri_temp = stack_description.stacks[0].outputs[0].output_value
+                rescue RuntimeError => e
+                        error = { "error" => e.message }
+                        status 500
+                        body error.to_json
+                        return
+                end
+ 
+ 		uri = URI.parse(uri_temp)
 
-		uri = URI.parse(uri_temp)
+		if uri 
+	 		http = Net::HTTP.new(uri.host, 80)
+ 			request = Net::HTTP::Get.new(uri.to_s)
+ 			response = http.request(request)
+	 		response_lines = response.body.lines.map(&:chomp)
 
-		http = Net::HTTP.new(uri.host, 80)
-		request = Net::HTTP::Get.new(uri.to_s)
-		response = http.request(request)
-
-		response_lines = response.body.lines.map(&:chomp)
-
-		# output
-		puts ""
-		puts "Status code: #{response.code}"
-		puts ""
-		puts "Content (first 10 lines):"
-		puts ""
-		for i in 0..9
-			puts response_lines[i]
+	 		msg = { "content" => response_lines[0..9] }
+			status response.code
+		else
+			msg = { "error" => "Output URI isn ot valid" }
+			status 500
 		end
-		puts ""
-	end
-
-	# Getting info about the API
-	get '/info' do
-		return "Hello World".to_json
-	end
+		body msg.to_json
+		return
+ 	end
 
 # class ServerControl end
 end
