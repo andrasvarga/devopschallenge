@@ -11,6 +11,13 @@
 			:pattern => "[a-zA-Z0-9]*",
 			:required => true
 		},
+		'SiteName'	     => {
+			:type	 => "string",
+			:default => "example.com",
+			:min	 => 1,
+			:max	 => 64,
+			:pattern => "^(?:[-A-Za-z0-9]+\\.)+[A-Za-z]{2,6}$"
+		},
                 'VpcId'              => {
 			:type    => "string",
 			:default => "vpc-4a1a2b23",
@@ -59,7 +66,7 @@
 			:type	 => "integer",
 			:default => 2,
 			:min	 => 2,
-			:max	 => 20
+			:max	 => 10
 		},
                 'DBName'             => {
 			:type    => "string",

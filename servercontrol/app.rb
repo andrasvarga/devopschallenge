@@ -8,9 +8,6 @@ require 'sinatra'
 require 'json'
 require './settings'
 
-class ValidationError < StandardError
-end
-
 class ServerControl < Sinatra::Base
 
 	def self_check(id)
@@ -39,11 +36,8 @@ class ServerControl < Sinatra::Base
 				next
 			else
 				# check if required
-				if param[:required]
-					if raw_params[key].nil? || raw_params[key].empty?
-                        			valid_params['ERROR'] = "#{key} is required!"
-			                        return valid_params
-			                end
+				if param[:required] && raw_params[key].nil?
+                        		raise ArgumentError.new("#{key} is required!")
 				end
 
 				# assign default value if nil
@@ -59,54 +53,45 @@ class ServerControl < Sinatra::Base
 					when "string"
 						l = raw_params[key].length
 						if l < param[:min]
-	                                                valid_params['ERROR'] = "#{key} : #{raw_params[key]} is too short! Minimum length is #{param[:min]}"
-        	                                        return valid_params
+	                                                raise ArgumentError.new("#{key} : #{raw_params[key]} is too short! Minimum length is #{param[:min]}")
 						elsif l > param[:max]
-                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is too long! Maximum length is #{param[:max]}"
-                                                        return valid_params
+                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is too long! Maximum length is #{param[:max]}")
 						end
 						unless param[:pattern].nil?
 							pattern = Regexp.new(param[:pattern]).freeze
 							unless raw_params[key] =~ pattern
-	                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} does not match the pattern: #{param[:pattern]}"
-								return valid_params
+	                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} does not match the pattern: #{param[:pattern]}")
 							end
 						end
 						valid_params[key] = raw_params[key]
 					when "integer"
 						i = raw_params[key].to_i
 						unless i
-                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is not integer!"
-                                                        return valid_params
+                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is not integer!")
 						end
 
 						if i < param[:min]
-                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is too small! Minimum is #{param[:min]}"
-                                                        return valid_params
+                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is too small! Minimum is #{param[:min]}")
                                                 elsif  i > param[:max]
-                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is too big! Maximum is #{param[:max]}"
-                                                        return valid_params
+                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is too big! Maximum is #{param[:max]}")
                                                 else
 							valid_params[key] = raw_params[key]
 						end
 					when "list"
 						raw_params[key].each do |item|
 							unless param[:allowed].include? item
-								valid_params['ERROR'] = "#{key} : #{j} is not an allowed! Allowed values are: #{param[:allowed]}"
-	                                                        return valid_params
+								raise ArgumentError.new("#{key} : #{j} is not an allowed! Allowed values are: #{param[:allowed]}")
 							end
 						end
 						valid_params[key] = raw_params[key].join(", ")
 					when "option"
 						unless param[:allowed].include? raw_params[key]
-                                                        valid_params['ERROR'] = "#{key} : #{raw_params[key]} is not an option! Allowed values are: #{param[:allowed]}"
-                                                        return valid_params
+                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is not an option! Allowed values are: #{param[:allowed]}")
 						else
 							valid_params[key] = raw_params[key]
 						end
 					else
-                                                valid_params['ERROR'] = "Unknown parameter type: #{param[:type]}"
-						return valid_params
+                                                raise ArgumentError.new("Unknown parameter type: #{param[:type]}")
 					end
 				end
 			end
@@ -115,20 +100,26 @@ class ServerControl < Sinatra::Base
 	end
 
 	before do
+		content_type 'application/json'
 		r = request.body
 		unless r.read.to_s.length < 2
-			r.rewind
-			@request_payload = JSON.parse r.read
+			begin
+				r.rewind
+				@request_payload = JSON.parse r.read
+			rescue JSON::ParserError => e
+				error = { "error" => e.message }
+	                        halt 400, {'Content-Type' => 'application/json'}, error.to_json
+			end
 		end
 	end
 
 	# Create stack
 	post '/stack' do
-		
-		params = validate(@request_payload)
-
-		unless params['ERROR'].nil?
-			error = { "error" => params['ERROR'] }
+	
+		begin	
+			params = validate(@request_payload)
+		rescue ArgumentError => e
+			error = { "error" => e.message }
 			status 400
 			body error.to_json
 			return
@@ -143,6 +134,7 @@ class ServerControl < Sinatra::Base
 				stack_name: params['stackName'],
 				template_body: template,
 				parameters: [
+				  { parameter_key: "SiteName",           parameter_value: params['SiteName'] },
 				  { parameter_key: "VpcId", 		 parameter_value: params['VpcId'] },
 				  { parameter_key: "Subnets", 		 parameter_value: params['Subnets'] },
 				  { parameter_key: "AZs",		 parameter_value: params['AZs'] },
@@ -167,7 +159,7 @@ class ServerControl < Sinatra::Base
 
 			status_message = stack_description.stacks[0].stack_status
 
-		rescue RuntimeError => e
+		rescue StandardError => e
 			error = { "error" => e.message }
 			status 500
 			body error.to_json
@@ -208,7 +200,7 @@ class ServerControl < Sinatra::Base
 			deletion = client.delete_stack({ stack_name: stack })
 			stack_description = client.describe_stacks({ stack_name: stack })
                         status_message = stack_description.stacks[0].stack_status
-		rescue RuntimeError => e
+		rescue StandardError => e
 			error = { "error" => e.message }
 			status 500
 			body error.to_json
@@ -240,7 +232,7 @@ class ServerControl < Sinatra::Base
                         stack = params[:name]
                         client = Aws::CloudFormation::Client.new( region: $aws_region )
                         stack_description = client.describe_stacks({ stack_name: stack })
-                rescue RuntimeError => e
+                rescue StandardError => e
                         error = { "error" => e.message }
                         status 500
                         body error.to_json
@@ -330,7 +322,7 @@ class ServerControl < Sinatra::Base
                         client = Aws::CloudFormation::Client.new( region: $aws_region )
                         stack_description = client.describe_stacks({ stack_name: stack })
 			uri_temp = stack_description.stacks[0].outputs[0].output_value
-                rescue RuntimeError => e
+                rescue StandardError => e
                         error = { "error" => e.message }
                         status 500
                         body error.to_json

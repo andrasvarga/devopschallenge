@@ -1,6 +1,6 @@
 # DevOps Challenge alias DOC class with the site name parameter
 class doc (
-	$sitename = "drupal",
+	$sitename = "example.com",
 	$username = "ubuntu",
 ) {
         # GIT installation and setting for Andras
@@ -34,7 +34,8 @@ class doc (
                 	ensure		=> present,
                 	port		=> '80',
                 	docroot		=> "/var/${doc::sitename}/core",
-			docroot_owner	=> $doc::username
+			docroot_owner	=> $doc::username,
+			override	=> 'All',
                 } ->
                 exec { 'service apache2 start':
                 	command		=> '/usr/bin/service apache2 start',

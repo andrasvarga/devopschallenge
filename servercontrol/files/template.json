@@ -5,6 +5,16 @@
 
   "Parameters" : {
 
+    "SiteName" : {
+      "Default": "example.com",
+      "Description" : "Drupal site name",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "64",
+      "AllowedPattern" : "^(?:[-A-Za-z0-9]+\\.)+[A-Za-z]{2,6}$",
+      "ConstraintDescription" : "must be a valid domain name."
+    },
+
     "VpcId" : {
       "Type" : "AWS::EC2::VPC::Id",
       "Description" : "VpcId of your existing Virtual Private Cloud (VPC)",
@@ -63,7 +73,7 @@
       "ConstraintDescription" : "must begin with a letter and contain only alphanumeric characters."
     },
 
-    "DBUser": {
+    "DBUser" : {
       "Default": "ubuntu",
       "Description" : "Username for MySQL database access",
       "Type": "String",
@@ -73,7 +83,7 @@
       "ConstraintDescription" : "must begin with a letter and contain only alphanumeric characters."
     },
 
-    "DBPassword": {
+    "DBPassword" : {
       "NoEcho": "true",
       "Description" : "Password for MySQL database access",
       "Type": "String",
@@ -83,7 +93,7 @@
       "ConstraintDescription" : "must contain only alphanumeric characters."
     },
 
-    "DBAllocatedStorage": {
+    "DBAllocatedStorage" : {
       "Default": "5",
       "Description" : "The size of the database (Gb)",
       "Type": "Number",
@@ -92,7 +102,7 @@
       "ConstraintDescription" : "must be between 5 and 1024Gb."
     },
 
-    "DBInstanceClass": {
+    "DBInstanceClass" : {
       "Description" : "The database instance type",
       "Type": "String",
       "Default": "db.t2.micro",
@@ -100,7 +110,7 @@
       "ConstraintDescription" : "must select a valid database instance type."
     },
 
-    "MultiAZDatabase": {
+    "MultiAZDatabase" : {
       "Default": "true",
       "Description" : "Create a Multi-AZ MySQL Amazon RDS database instance",
       "Type": "String",
@@ -108,7 +118,7 @@
       "ConstraintDescription" : "must be either true or false."
     },
 
-    "DrupalUser": {
+    "DrupalUser" : {
       "Default": "admin",
       "Description" : "Username for Drupal admin",
       "Type": "String",
@@ -328,7 +338,8 @@
                   "awselburl=" , { "Fn::Join" : [ "", [ "http://", { "Fn::GetAtt" : [ "ElasticLoadBalancer", "DNSName" ]}]]} , "\n",
                   "awselbdns=" , { "Fn::GetAtt" : [ "ElasticLoadBalancer", "DNSName" ]} , "\n",
                   "drupalusr=" , { "Ref": "DrupalUser" } , "\n",
-                  "drupalpsw=" , { "Ref": "DrupalPassword" }
+                  "drupalpsw=" , { "Ref": "DrupalPassword" } , "\n",
+		  "sitename="  , { "Ref": "SiteName" }
                 ]]},
                 "mode"    : "000644",
                 "owner"   : "ubuntu",

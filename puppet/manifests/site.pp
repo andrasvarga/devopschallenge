@@ -1,6 +1,6 @@
 node default {
     class { 'doc':
-        sitename => "drupal",
+        sitename => $::sitename,
 	username => "ubuntu",
     }
 }

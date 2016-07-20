@@ -17,7 +17,8 @@ class lamp {
 			mpm_module => 'prefork',
 			default_vhost => false,
 		}
-		include apache::mod::php
+		class { 'apache::mod::php': }
+		class { 'apache::mod::rewrite': }
 	}
 
 	# install mysql-server package and ensure mysql service is running
