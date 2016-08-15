@@ -135,6 +135,11 @@ HELP = <<ENDHELP
    --name           Name of the HA stack to delete
                     Required!
 
+   test             Tests the avaiability of a stack front-end
+                    The following arguments can be used:
+   --name           Name of the HA stack to test
+                    Required!
+
 ENDHELP
 
 args = Hash[ ARGV.join(' ').scan(/--?([^=\s]+)(?:=(\S+))?/) ]
@@ -286,7 +291,7 @@ if vargs[:test]
 	        http = Net::HTTP.new(uri.host, 80)
             http.open_timeout = 10
             http.read_timeout = 10
-	        request = Net::HTTP::Get.new("#{uri.to_s}/node/1")
+	        request = Net::HTTP::Get.new(uri.to_s)
 	        response = http.request(request)
         rescue TimeoutError => e
             "Time Out"
