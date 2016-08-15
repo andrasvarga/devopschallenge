@@ -1,5 +1,14 @@
 ### devopschallenge
 
+DevOps Challenge: CLI
+=====================
+
+Usage of cli.rb:
+
+	ruby cli.rb create [--name=stack_name] [--site-name=sitename.com] [--instance-type=t2.micro] [--instance-count=2] [--db-name=drupal] [--db-user=drupal] [--db-pass=B8k9OlHk] [--db-size=5] [--db-type=db.t2.micro] [--multi-az] [--drupal-u=admin] [--drupal-p=f9Eg73Hk]
+	ruby cli.rb delete [--name=stack_name]
+	ruby cli.rb test [--name=stack_name]
+
 DevOps Challenge: API
 =====================
 
@@ -36,8 +45,22 @@ Request:
 
 Delete stack
 ------------
-
 Request:
 
 	DELETE
 	http://ec2-52-28-111-63.eu-central-1.compute.amazonaws.com:9292/stack/{stack_name}
+
+Get stack status
+----------------
+Request:
+
+	GET
+	http://ec2-52-28-111-63.eu-central-1.compute.amazonaws.com:9292/stack/{stack_name}
+	
+Stop an EC2 instance
+--------------------
+This will terminate the instance if it exists within an AutoScale Group.
+Request:
+
+	PATCH
+	http://ec2-52-28-111-63.eu-central-1.compute.amazonaws.com:9292/instance/{id}/stop
