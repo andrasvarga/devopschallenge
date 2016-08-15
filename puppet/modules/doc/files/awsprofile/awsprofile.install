@@ -1,0 +1,9 @@
+/**
+ * Implement hook_install().
+ *
+ * Perform actions to set up the site for the AWS Profile.
+ */
+function awsprofile_install() {
+  include_once DRUPAL_ROOT . '/profiles/standard/standard.install';
+  standard_install();
+}

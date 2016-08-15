@@ -136,6 +136,14 @@
       "MaxLength": "41",
       "AllowedPattern" : "[a-zA-Z0-9]*",
       "ConstraintDescription" : "must contain only alphanumeric characters."
+    },
+
+    "DrupalSalt": {
+      "NoEcho": "true",
+      "Description" : "Common Drupal hash salt",
+      "Type": "String",
+      "MinLength": "74",
+      "MaxLength": "74"
     }
   },
 
@@ -339,6 +347,7 @@
                   "awselbdns=" , { "Fn::GetAtt" : [ "ElasticLoadBalancer", "DNSName" ]} , "\n",
                   "drupalusr=" , { "Ref": "DrupalUser" } , "\n",
                   "drupalpsw=" , { "Ref": "DrupalPassword" } , "\n",
+		  "drupalslt=" , { "Ref": "DrupalSalt" } , "\n",
 		  "sitename="  , { "Ref": "SiteName" }
                 ]]},
                 "mode"    : "000644",
@@ -447,7 +456,7 @@
         "HealthCheck" : {
           "Target" : "HTTP:80/",
           "HealthyThreshold" : "5",
-          "UnhealthyThreshold" : "5",
+          "UnhealthyThreshold" : "7",
           "Interval" : "60",
           "Timeout" : "25"
         }
@@ -470,7 +479,7 @@
       }
     },
 
-	  "S3Bucket" : {
+    "S3Bucket" : {
       "Type" : "AWS::S3::Bucket",
       "Properties" : {
         "AccessControl" : "PublicRead"
@@ -555,7 +564,8 @@
       "Properties" : {
         "GroupDescription": "Open database for access",
         "SecurityGroupIngress" : [
-          { "IpProtocol" : "tcp", "FromPort" : "3306", "ToPort" : "3306", "SourceSecurityGroupId" : { "Ref" : "InstanceSecurityGroup" } }
+          { "IpProtocol" : "tcp", "FromPort" : "3306", "ToPort" : "3306", "SourceSecurityGroupId" : { "Ref" : "InstanceSecurityGroup" } },
+	  { "IpProtocol" : "tcp", "FromPort" : "3306", "ToPort" : "3306", "SourceSecurityGroupId" : "sg-12e43f7a" }
         ]
       }
     },

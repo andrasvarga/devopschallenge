@@ -1,105 +1,33 @@
 # app.rb
 
-require 'aws-sdk'
 require 'base64'
-require 'net/http'
-require 'uri'
-require 'sinatra'
 require 'json'
+require 'net/http'
+	require 'open-uri'
+require 'sinatra'
+require 'uri'
 require './settings'
+require './helpers'
+require './controllers'
 
 class ServerControl < Sinatra::Base
 
-	def self_check(id)
-		# getting the instance ID for this server
-		metadata_endpoint = 'http://169.254.169.254/latest/meta-data/'
-		self_id = Net::HTTP.get( URI.parse( metadata_endpoint + 'instance-id' ) )
-		if id == self_id
-		        return "Error: Could not control the Master node itself. Please select an agent instance."		      
+	helpers do
+		def protected!
+			return if authorized?
+			headers['WWW-Authenticate'] = 'Basic realm="Restricted Area"'
+			halt 401, "Not authorized\n"
+		end
+
+		def authorized?
+			@auth ||=  Rack::Auth::Basic::Request.new(request.env)
+			@auth.provided? and @auth.basic? and @auth.credentials and @auth.credentials == [$api_creds['username'], $api_creds['password']]
 		end
 	end
 
-	def get_instance(id)
-		ec2 = Aws::EC2::Resource.new(region: $aws_region)
-		return ec2.instance(id)
-	end
-
-	# Parameter validation for new stack creation. Criterias and default values are configured in settings.rb.
-	def validate(raw_params)
-
-		defaults = Marshal.load( Marshal.dump($params_config) )
-                valid_params = Hash.new
-
-		defaults.each do |key,param|
-
-			if param[:type] == 'novalidate'
-				next
-			else
-				# check if required
-				if param[:required] && raw_params[key].nil?
-                        		raise ArgumentError.new("#{key} is required!")
-				end
-
-				# assign default value if nil
-				if raw_params[key].nil? || raw_params[key].empty?
-					if param[:default].kind_of?(Array)
-	                                	valid_params[key] = param[:default].join(", ")
-					else
-						valid_params[key] = param[:default].to_s
-					end
-                                else
-					# validate based on type
-					case param[:type]
-					when "string"
-						l = raw_params[key].length
-						if l < param[:min]
-	                                                raise ArgumentError.new("#{key} : #{raw_params[key]} is too short! Minimum length is #{param[:min]}")
-						elsif l > param[:max]
-                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is too long! Maximum length is #{param[:max]}")
-						end
-						unless param[:pattern].nil?
-							pattern = Regexp.new(param[:pattern]).freeze
-							unless raw_params[key] =~ pattern
-	                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} does not match the pattern: #{param[:pattern]}")
-							end
-						end
-						valid_params[key] = raw_params[key]
-					when "integer"
-						i = raw_params[key].to_i
-						unless i
-                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is not integer!")
-						end
-
-						if i < param[:min]
-                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is too small! Minimum is #{param[:min]}")
-                                                elsif  i > param[:max]
-                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is too big! Maximum is #{param[:max]}")
-                                                else
-							valid_params[key] = raw_params[key]
-						end
-					when "list"
-						raw_params[key].each do |item|
-							unless param[:allowed].include? item
-								raise ArgumentError.new("#{key} : #{j} is not an allowed! Allowed values are: #{param[:allowed]}")
-							end
-						end
-						valid_params[key] = raw_params[key].join(", ")
-					when "option"
-						unless param[:allowed].include? raw_params[key]
-                                                        raise ArgumentError.new("#{key} : #{raw_params[key]} is not an option! Allowed values are: #{param[:allowed]}")
-						else
-							valid_params[key] = raw_params[key]
-						end
-					else
-                                                raise ArgumentError.new("Unknown parameter type: #{param[:type]}")
-					end
-				end
-			end
-		end
-		return valid_params
-	end
-
+	# Auth and parameter validation for new stack creation. Criterias and default values are configured in settings.rb.
 	before do
+		protected!
 		content_type 'application/json'
 		r = request.body
 		unless r.read.to_s.length < 2
@@ -108,7 +36,7 @@ class ServerControl < Sinatra::Base
 				@request_payload = JSON.parse r.read
 			rescue JSON::ParserError => e
 				error = { "error" => e.message }
-	                        halt 400, {'Content-Type' => 'application/json'}, error.to_json
+	            halt 400, {'Content-Type' => 'application/json'}, error.to_json
 			end
 		end
 	end
@@ -117,7 +45,7 @@ class ServerControl < Sinatra::Base
 	post '/stack' do
 	
 		begin	
-			params = validate(@request_payload)
+			params = ServerHelpers.validate(@request_payload)
 		rescue ArgumentError => e
 			error = { "error" => e.message }
 			status 400
@@ -126,39 +54,7 @@ class ServerControl < Sinatra::Base
 		end
 
 		begin
-			client = Aws::CloudFormation::Client.new( region: $aws_region )
-
-			template = File.open(File.dirname(__FILE__)+'/files/template.json').read
-
-			creation = client.create_stack({
-				stack_name: params['stackName'],
-				template_body: template,
-				parameters: [
-				  { parameter_key: "SiteName",           parameter_value: params['SiteName'] },
-				  { parameter_key: "VpcId", 		 parameter_value: params['VpcId'] },
-				  { parameter_key: "Subnets", 		 parameter_value: params['Subnets'] },
-				  { parameter_key: "AZs",		 parameter_value: params['AZs'] },
-				  { parameter_key: "KeyName",	 	 parameter_value: params['KeyName'] },
-				  { parameter_key: "SSHLocation",	 parameter_value: params['SSHLocation'] },
-				  { parameter_key: "InstanceType",	 parameter_value: params['InstanceType'] },
-				  { parameter_key: "InstanceCount",	 parameter_value: params['InstanceCount'] },
-				  { parameter_key: "DBName",		 parameter_value: params['DBName'] },
-				  { parameter_key: "DBUser",		 parameter_value: params['DBUser'] },
-				  { parameter_key: "DBPassword",         parameter_value: params['DBPassword'] },
-				  { parameter_key: "DBAllocatedStorage", parameter_value: params['DBAllocatedStorage'] },
-				  { parameter_key: "DBInstanceClass",    parameter_value: params['DBInstanceClass'] },
-				  { parameter_key: "MultiAZDatabase",	 parameter_value: params['MultiAZDatabase'] },
-				  { parameter_key: "DrupalUser",	 parameter_value: params['DrupalUser'] },
-				  { parameter_key: "DrupalPassword",	 parameter_value: params['DrupalPassword'] }
-				],
-				capabilities: ["CAPABILITY_IAM"],
-				on_failure: "ROLLBACK"
-			})
-
-			stack_description = client.describe_stacks({ stack_name: creation.stack_id })
-
-			status_message = stack_description.stacks[0].stack_status
-
+			stack_details = ServerControllers.create_stack(params)
 		rescue StandardError => e
 			error = { "error" => e.message }
 			status 500
@@ -166,11 +62,11 @@ class ServerControl < Sinatra::Base
 			return
 		end
 
-		if status_message == "CREATE_IN_PROGRESS"
+		if stack_details['status_message'] == "CREATE_IN_PROGRESS"
 			results = {
 				"success" => {
-					"StackId"	 => creation.stack_id,
-					"Status"         => status_message,
+					"StackId"		 => stack_details['stack_id'],
+					"Status"         => stack_details['status_message'],
 					"DrupalUsername" => params['DrupalUser'],
 					"DrupalPassword" => params['DrupalPassword']
 				}
@@ -195,11 +91,7 @@ class ServerControl < Sinatra::Base
 		end
 		
 		begin
-			stack = params[:name]
-			client = Aws::CloudFormation::Client.new( region: $aws_region )
-			deletion = client.delete_stack({ stack_name: stack })
-			stack_description = client.describe_stacks({ stack_name: stack })
-                        status_message = stack_description.stacks[0].stack_status
+			status_message = ServerControllers.delete_stack(params[:name])
 		rescue StandardError => e
 			error = { "error" => e.message }
 			status 500
@@ -223,129 +115,34 @@ class ServerControl < Sinatra::Base
 	# Get Stack status
 	get '/stack/:name' do
 		if params[:name].nil?
-                        status 400
-                        body "No stack name given"
-                        return
-                end
-
-                begin
-                        stack = params[:name]
-                        client = Aws::CloudFormation::Client.new( region: $aws_region )
-                        stack_description = client.describe_stacks({ stack_name: stack })
-                rescue StandardError => e
-                        error = { "error" => e.message }
-                        status 500
-                        body error.to_json
-                        return
-                end
-                status 200
-                body stack_description.stack[0].to_json
-                return
+        	status 400
+            body "No stack name given"
+            return
         end
-	
-	# Starting EC2 instance
-	patch '/instance/:id/start' do
-		self_check( params[:id] )
-		i = get_instance( params[:id] )
-		if i.exists?
-		    case i.state.code
-		        when 0  # pending
-				msg = { "error" => "Agent is pending, so it will be running in a bit" }
-				status 400
-		        when 16  # started
-				msg = { "error" => "Agent is already started" }
-				status 400
-	        	when 48  # terminated
-				msg = { "error" => "Agent is terminated, so you cannot start it" }
-	        		status 400	
-		        else
-	        		i.start
-				if i.state.code == 16
-					msg = { "success" => "Instance is started" }
-		        		status 200
-				else
-					msg = { "error" => "Instance state code: #{i.state.code}" }
-					status 500
-				end
-		    end
-		else
-			msg = { "error" => "Instance not found" }
-			status 404
-		end
-		body msg.to_json
-		return
-	end
 
-	# Stopping and EC2 instance
+    	begin
+        	stack = params[:name]
+        	client = Aws::CloudFormation::Client.new( region: $aws_region )
+        	status_message = client.describe_stacks({ stack_name: stack }).stacks[0].stack_status
+		rescue StandardError => e
+        	error = { "error" => e.message }
+        	status 500
+        	body error.to_json
+        	return
+        end
+		success = { "status" => status_message }
+        status 200
+        body success.to_json
+        return
+    end
+
+	# Stopping and EC2 instance / Will terminate if instance is in AutoScale group
 	patch '/instance/:id/stop' do
-		self_check( params[:id] )
-		i = get_instance( params[:id] )
-		if i.exists?
-		    case i.state.code
-		        when 48  # terminated
-	        		msg = { "error" => "Agent is terminated, so you cannot stop it" }
-				status 400
-		        when 64  # stopping
-		        	msg = { "error" => "Agent is stopping, so it will be stopped in a bit" }
-				status 400
-		        when 89  # stopped
-		        	msg = { "error" =>  "Agent is already stopped" }
-		        	status 400
-		    	else
-        	    		i.stop
-        	    		if i.state.code == 64
-					msg = { "success" => "Agent is stopping" }
-					status 200
-				else
-					msg = { "error" => "Instance state code: #{i.state.code}" }
-					status 500
-				end
-		    end
-		else	
-			msg = { "error" => "Instance not found" }
-			status 404
-		end
-		body msg.to_json
+		progress = ServerControllers.stop_instance(params[:id])
+		status progress["status"]
+		body progress["msg"].to_json
 		return
 	end
-
-	# Testing the Drupal site availability on agent node
- 	get '/stack/:name/test' do
-		if params[:name].nil?
-                        status 400
-                        body "No stack name given"
-                        return
-                end
-
-                begin
-                        stack = params[:name]
-                        client = Aws::CloudFormation::Client.new( region: $aws_region )
-                        stack_description = client.describe_stacks({ stack_name: stack })
-			uri_temp = stack_description.stacks[0].outputs[0].output_value
-                rescue StandardError => e
-                        error = { "error" => e.message }
-                        status 500
-                        body error.to_json
-                        return
-                end
- 
- 		uri = URI.parse(uri_temp)
-
-		if uri 
-	 		http = Net::HTTP.new(uri.host, 80)
- 			request = Net::HTTP::Get.new(uri.to_s)
- 			response = http.request(request)
-	 		response_lines = response.body.lines.map(&:chomp)
-
-	 		msg = { "content" => response_lines[0..9] }
-			status response.code
-		else
-			msg = { "error" => "Output URI isn ot valid" }
-			status 500
-		end
-		body msg.to_json
-		return
- 	end
 
 # class ServerControl end
 end

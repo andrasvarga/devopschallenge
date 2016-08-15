@@ -9,6 +9,10 @@ class lamp {
 			require => Exec['apt-update'],
                         ensure => installed,
 		}
+		package { 'unzip':
+			require => Exec['apt-update'],
+			ensure => installed,
+		}
 	}
 
 	# install apache withoud default vhost for custom configuraton

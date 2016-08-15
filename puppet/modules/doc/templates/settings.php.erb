@@ -213,11 +213,11 @@
  * @endcode
  */
 $databases['default']['default'] = array(
-	'driver' => 'mysql',
 	'database' => '<%= @awsdbname %>',
 	'username' => '<%= @awsdbuser %>',
 	'password' => '<%= @awsdbpass %>',
 	'host' 	   => '<%= @awsdbhost %>',
+	'driver' => 'mysql',
 	'prefix' => 'drupal_'
 );
 
@@ -251,7 +251,7 @@ $update_free_access = FALSE;
  *   $drupal_hash_salt = file_get_contents('/home/example/salt.txt');
  *
  */
-$drupal_hash_salt = '';
+$drupal_hash_salt = '<%= @drupalslt %>';
 
 /**
  * Base URL (optional).
@@ -594,20 +594,20 @@ $conf['404_fast_html'] = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML+RDFa 1.0//EN"
 
 /**
  * AWS-SDK Configuration
+ *
+ * Using IAM Profile instead of credentials
  */
 $conf['awssdk2_use_instance_profile'] = TRUE;
+$conf['awssdk2_default_cache_config'] = '/tmp/cache';
 
 /**
  * S3FS Configuration
  */
-$conf['s3fs_bucket'] = '<%= @awss3name %>';
-$conf['s3fs_region'] = '<%= @awsregion %>';
-$conf['s3fs_hostname'] = '<%= @awss3host %>';
-$conf['s3fs_use_https'] = FALSE;
+$conf['s3fs_bucket']		= '<%= @awss3name %>';
+$conf['s3fs_region']		= '<%= @awsregion %>';
+# $conf['s3fs_hostname']		= '<%= @awss3host %>';
 $conf['s3fs_use_s3_for_public'] = TRUE;
 $conf['s3fs_use_s3_for_private'] = TRUE;
-$conf['s3fs_public_folder'] = 's3-public';
-$conf['s3fs_private_folder'] = 's3-private';
 
 /**
  * Install Profile

@@ -1,5 +1,10 @@
 # settings.rb
 	
+	$api_creds = {
+		'username' => ENV['API_USER'],
+		'password' => ENV['API_PASS']
+	}
+
 	$aws_region = "eu-central-1"
 	
 	$params_config = {
@@ -118,5 +123,11 @@
 			:min	 => 8,
 			:max	 => 41,
 			:pattern => "[a-zA-Z0-9]*"
-		}
+		},
+		'DrupalSalt'         => {
+                        :type    => "string",
+                        :default => Array.new(74){[*"a".."z", *"A".."Z", *"0".."9", *"-", *"_"].sample}.join,
+                        :min     => 74,
+                        :max     => 74
+                }
 	}

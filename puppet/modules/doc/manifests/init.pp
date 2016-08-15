@@ -17,68 +17,79 @@ class doc (
 	        }
 	}
 
-        class drupalsetup {
-		exec { 'service apache2 stop':
+	class server-on {
+                exec { 'service apache2 stop':
                         command         => '/usr/bin/service apache2 stop',
                 } ->
-		file { "/var/${doc::sitename}":
-                        ensure		=> directory,
-			owner		=> $doc::username,
-		} ->
-		class { 'composer':
-			download_method => 'wget',
-			composer_home   => "/home/${doc::username}",
-			suhosin_enabled => false,
-		} ->
-		apache::vhost { $doc::sitename:
-                	ensure		=> present,
-                	port		=> '80',
-                	docroot		=> "/var/${doc::sitename}/core",
-			docroot_owner	=> $doc::username,
-			override	=> 'All',
+                apache::vhost { $doc::sitename:
+                        ensure          => present,
+                        port            => '80',
+                        manage_docroot  => false,
+                        docroot         => "/var/${doc::sitename}/web",
+                        docroot_owner   => $doc::username,
+                        override        => 'All',
                 } ->
                 exec { 'service apache2 start':
-                	command		=> '/usr/bin/service apache2 start',
+                        command         => '/usr/bin/service apache2 start',
+                }
+        }
+
+        class drupal-make {
+                file { "/var/${doc::sitename}" :
+                        ensure  => directory,
                 } ->
-                file { "/var/${doc::sitename}/composer.json" :
-			ensure		=> present,
-			source		=> "puppet:///modules/doc/composer.json",
-			owner		=> $doc::username,
-		} ->
-		composer::exec { 'install':
-			cmd			=> 'install',
-			cwd			=> "/var/${doc::sitename}",
-			dry_run			=> false,
-			custom_installers	=> true,
-			timeout			=> 400,
-			interaction		=> false,
-			user			=> $doc::username,
-                } ->
-		file { "/var/${doc::sitename}/core/sites/default/settings.php" :
+                file { "/var/${doc::sitename}/d7.make.yml" :
                         ensure  => present,
-                	content => template('doc/settings.php.erb'),
+                        source  => 'puppet:///modules/doc/d7.make.yml',
                 } ->
-		file { "/var/${doc::sitename}/core/profiles/awsprofile" :
-			source  => "puppet:///modules/doc/awsprofile",
-			recurse	=> true,
-		} ->
-		drush::run { 'site-install':
-			arguments  => "--site-name=${doc::sitename} --root='/var/${doc::sitename}/core' --account-name=${::drupalusr} --account-pass=${::drupalpsw}",
-		} ->
-		exec { "chown /var/${doc::sitename}":
-                        # Modify project directory permissions to be writable by the application
-                        command         => "/bin/chown -R www-data /var/${doc::sitename}",
+                class { 'drush::git::drush' :
+                        git_branch => '8.x',
                 } ->
-		exec { "chmod install.php":
-			command		=> "/bin/chmod -R 777 /var/${doc::sitename}/core/install.php",
+		exec { "drush make":
+			command => "/usr/bin/drush @none --yes  make /var/${doc::sitename}/d7.make.yml /var/${doc::sitename}/web",
+			unless	=> "/usr/bin/test -f /var/${doc::sitename}/web/index.php",
 		}
         }
+
+	class drupal-config {
+		file { '/tmp/cache':
+			ensure 	=> directory,
+		}
+		file { "/var/${doc::sitename}/web/sites/default/settings.php" :
+                        ensure  => present,
+                        content => template('doc/settings.php.erb'),
+                } ->
+                file { "/var/${doc::sitename}/web/profiles/awsprofile" :
+                        source  => 'puppet:///modules/doc/awsprofile',
+                        recurse => true,
+                } -> 
+		file { "/var/${doc::sitename}/web/sites/default/files":
+			ensure => directory,
+		} ->
+		exec { "/bin/chown -R www-data /var/${doc::sitename}/web/sites/default/files": } ->
+		exec { "/bin/chmod -R 755 /var/${doc::sitename}/web/sites/default/files": }
+	}
+
+	class drupal-site-install {
+		file { '/var/tmp/db-check.sh' :
+                        ensure => present,
+                        content => template('doc/db-check.sh.erb'),
+                } ->
+		exec { '/bin/chmod +x /var/tmp/db-check.sh': } ->
+                exec { 'drush site-install':
+			cwd	=> "/var/${doc::sitename}/web",
+			command => "/usr/bin/drush site-install awsprofile --yes --site-name=${doc::sitename} --account-name=${::drupalusr} --account-pass=${::drupalpsw}",
+                	unless	=> "/var/tmp/db-check.sh",
+                }
+	}
 
 	# LAMP-stack Installation from other custom modules and declare the defined classes runs only if the site name is not undefined!
 	if $sitename != undef {
 		class { 'lamp': } ->
 		class { 'gitinstall': } ->
-		class { 'drush': } ->
-		class { 'drupalsetup': }
+		class { 'server-on': } ->
+		class { 'drupal-make': } ->
+                class { 'drupal-config': } ->
+                class { 'drupal-site-install': }
 	}
 }

@@ -1,0 +1,166 @@
+# DevOps Challenge alias DOC class with the site name parameter
+class doc (
+	$sitename = "example.com",
+	$username = "ubuntu",
+) {
+        # GIT installation and setting for Andras
+	class gitinstall {
+	        class { 'git': } ->
+	        git::config { 'color.ui':
+        	        value => 'true',
+	        } ->
+	        git::config { 'user.name':
+        	        value => 'andrasvarga',
+	        } ->
+	        git::config { 'user.email':
+        	        value => 'andras.varga.90@gmail.com',
+	        }
+	}
+
+	class drupal-config {
+		file { "/var/${doc::sitename}/web/sites/default/settings.php" :
+                        ensure  => present,
+                        content => template('doc/settings.php.erb'),
+                } ->
+                file { "/var/${doc::sitename}/web/profiles/awsprofile" :
+                        source  => "puppet:///modules/doc/awsprofile",
+                        recurse => true,
+                } -> 
+		file { "/var/${doc::sitename}/web/sites/default/files":
+			ensure => directory,
+		} ->
+		exec { "/bin/chown -R www-data /var/${doc::sitename}/web/sites/default/files": } ->
+		exec { "/bin/chmod -R 755 /var/${doc::sitename}/web/sites/default/files": }
+	}
+
+	class drupal-site-install {
+		file { "/var/tmp/db-check.sh" :
+                        ensure => present,
+                        content => template('doc/db-check.sh.erb'),
+                } ->
+		exec { "/bin/chmod +x /var/tmp/db-check.sh": } ->
+                exec { 'drush site-install':
+			cwd	=> "/var/${doc::sitename}/web",
+			command => "/var/${doc::sitename}/vendor/bin/drush site-install awsprofile --yes --site-name=${doc::sitename} --account-name=${::drupalusr} --account-pass=${::drupalpsw}",
+                        unless	=> "/var/tmp/db-check.sh",
+			user	=> "www-data",
+                }
+	}
+
+	class drupal-s3fs {
+		exec { 'drush dl s3fs':
+                        cwd     => "/var/${doc::sitename}/web",
+                        command => "/var/${doc::sitename}/vendor/bin/drush dl s3fs",
+                } ->
+		exec { 'drush en s3fs':
+                        cwd     => "/var/${doc::sitename}/web",
+                        command => "/var/${doc::sitename}/vendor/bin/drush en s3fs -y",
+                } ->
+		exec { 'drush make s3fs':
+                        cwd     => "/var/${doc::sitename}/web",
+                        command => "/var/${doc::sitename}/vendor/bin/drush make -y --no-core sites/all/modules/contrib/s3fs/s3fs.make",
+                }
+	}
+
+	class server-on {
+		exec { 'service apache2 stop':
+                        command         => '/usr/bin/service apache2 stop',
+                } ->
+                apache::vhost { $doc::sitename:
+                        ensure          => present,
+                        port            => '80',
+                        manage_docroot  => false,
+                        docroot         => "/var/${doc::sitename}/web",
+                        docroot_owner   => $doc::username,
+                        override        => 'All',
+                } ->
+                exec { 'service apache2 start':
+                        command         => '/usr/bin/service apache2 start',
+                }
+	}
+
+        class drupalsetup {
+
+		exec { "/sbin/swapon /var/swap.1":
+			unless		=> "/sbin/swapon -s | grep swap.1",
+		} ->
+		class { 'composer':
+			download_method => 'wget',
+			# composer_home   => "/home/${doc::username}",
+			composer_home	=> "/root",
+			suhosin_enabled => false,
+		} ->
+
+		file { "/var/${doc::sitename}" :
+			ensure => directory,
+		}
+		file { "/var/${doc::sitename}/composer.json" :
+			ensure => present,
+			source => "puppet:///modules/doc/composer.json",
+			replace => 'no',
+		}
+
+		# exec { "composer create-project":
+		#	command		=> "/usr/local/bin/composer create-project drupal-composer/drupal-project:7.x ${doc::sitename} --stability dev --no-interaction",
+		#	cwd		=> "/var",
+		#	user            => root,
+                #        environment     => "COMPOSER_HOME=${composer::composer_home}",
+		#	unless		=> "/usr/bin/test -f /var/${doc::sitename}/composer.json",
+		# } ->
+		# exec { "composer require drush/drush:7.*" :
+                #        command         => "/usr/local/bin/composer require drush/drush:7.*",
+                #        cwd             => "/var/${doc::sitename}",
+                #        user            => root,
+                #        environment     => "COMPOSER_HOME=${composer::composer_home}",
+                #        unless          => "/usr/bin/test -f /var/${doc::sitename}/vendor/bin/drush",
+                # } ->
+		# exec { "composer require aws/aws-sdk-php:2.*" :
+                #        command         => "/usr/local/bin/composer require aws/aws-sdk-php:2.*",
+                #        cwd             => "/var/${doc::sitename}",
+                #        user            => root,
+                #        environment     => "COMPOSER_HOME=${composer::composer_home}",
+                # } ->
+		# exec { "composer require drupal/libraries:7.*" :
+                #        command         => "/usr/local/bin/composer require drupal/libraries:7.*",
+                #        cwd             => "/var/${doc::sitename}",
+                #        user            => root,
+                #        environment     => "COMPOSER_HOME=${composer::composer_home}",
+                #        unless          => "/usr/bin/test -f /var/${doc::sitename}/web/sites/all/modules/contrib/libraries/libraries.module",
+                # } ->
+		# exec { "composer require drupal/s3fs:7.*" :
+                #        command         => "/usr/local/bin/composer require drupal/s3fs:7.*",
+                #        cwd             => "/var/${doc::sitename}",
+                #        user            => root,
+                #        environment     => "COMPOSER_HOME=${composer::composer_home}",
+                #        unless          => "/usr/bin/test -f /var/${doc::sitename}/web/sites/all/modules/contrib/s3fs/s3fs.module",
+                # } ->
+
+		composer::exec { 'install':
+			cmd			=> 'install',
+			cwd			=> "/var/${doc::sitename}",
+			custom_installers       => true,
+			dry_run			=> false,
+			# environment		=> "COMPOSER_HOME=${composer::composer_home}",
+			interaction             => false,
+			# timeout		=> 400
+			user			=> root,
+			unless			=> "test -f /var/${doc::sitename}/composer.lock",
+                } ->
+
+		class { 'server-on': } ->
+
+		class { 'drupal-config': } ->
+
+		class { 'drupal-site-install': } ->
+
+		class { 'drupal-s3fs': }
+
+        }
+
+	# LAMP-stack Installation from other custom modules and declare the defined classes runs only if the site name is not undefined!
+	if $sitename != undef {
+		class { 'lamp': } ->
+		class { 'gitinstall': } ->
+		class { 'drupalsetup': }
+	}
+}

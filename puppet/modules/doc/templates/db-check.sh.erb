@@ -1,0 +1,9 @@
+#!/bin/bash
+result=$(mysql --host="<%= @awsdbhost %>" --user="<%= @awsdbuser %>" --password="<%= @awsdbpass %>" --database="<%= @awsdbname %>" --execute="SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE 'drupal_%' LIMIT 1;")
+if [ $? -eq 0 ] && [ "$result" ]; then
+	echo "Drupal table exists (0)"
+	exit 0
+else
+	echo "Drupal table does not exist (1)"
+	exit 1
+fi
