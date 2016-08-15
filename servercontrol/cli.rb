@@ -276,7 +276,7 @@ if vargs[:test]
 			    uri_temp = stack_description.stacks[0].outputs[0].output_value
             end
         rescue StandardError => e
-            "Error"
+            puts "Error"
             puts e.message                
             exit
         end
@@ -294,7 +294,7 @@ if vargs[:test]
 	        request = Net::HTTP::Get.new(uri.to_s)
 	        response = http.request(request)
         rescue TimeoutError => e
-            "Time Out"
+            puts "Time Out"
             puts e.message
             exit
         end
