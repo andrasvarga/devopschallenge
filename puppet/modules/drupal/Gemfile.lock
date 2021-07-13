@@ -2,7 +2,8 @@ GEM
   remote: https://rubygems.org/
   specs:
     CFPropertyList (2.2.8)
-    addressable (2.4.0)
+    addressable (2.8.0)
+      public_suffix (>= 2.0.2, < 5.0)
     aws-sdk (1.66.0)
       aws-sdk-v1 (= 1.66.0)
     aws-sdk-v1 (1.66.0)
@@ -183,7 +184,7 @@ GEM
     ipaddress (0.8.3)
     json (1.8.3)
     json_pure (1.8.3)
-    jwt (1.5.3)
+    jwt (1.5.6)
     little-plugger (1.1.4)
     logging (2.1.0)
       little-plugger (~> 1.1)
@@ -206,6 +207,7 @@ GEM
       mini_portile2 (~> 2.0.0.rc2)
     open_uri_redirections (0.2.1)
     os (0.9.6)
+    public_suffix (4.0.6)
     puppet (4.4.0)
       CFPropertyList (~> 2.2.6)
       facter (> 2.0, < 4)
